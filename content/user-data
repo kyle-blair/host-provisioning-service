@@ -1,0 +1,38 @@
+#cloud-config
+
+# The autoinstall directive and cloud-init have some confusing overlap.
+# Perhaps it's correct to say that the autoinstall directive is used 
+# to configure the installer, while cloud-init is used to configure the
+# installed system.
+# In any case, I couldn't find an easy way to enable the ssh server 
+# via cloud-init, while autoinstall has a simple key for it.
+# Supposedly, the user-data section will be passed along to cloud-init.
+autoinstall:
+  version: 1
+  ssh:
+    install-server: true
+
+  user-data:
+    disable_root: true
+    ssh_pwauth: false
+    allow_public_ssh_keys: false
+
+    locale: en_US
+    keyboard:
+      layout: us
+
+    users:
+    - name: operator
+      groups: sudo
+      sudo: ALL=(ALL) NOPASSWD:ALL
+      shell: /bin/bash
+      lock_passwd: true
+      ssh_authorized_keys:
+        - <your-public-key>
+
+    write_files:
+    - path: /home/operator/hello-world.txt
+      content: |
+        This system was provisioned automatically.
+      owner: operator:operator
+      defer: true
