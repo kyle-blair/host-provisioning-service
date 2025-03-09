@@ -28,7 +28,7 @@ autoinstall:
       shell: /bin/bash
       lock_passwd: true
       ssh_authorized_keys:
-        - <your-public-key>
+        - <your-public-ssh-key>
 
     write_files:
     - path: /home/operator/hello-world.txt
