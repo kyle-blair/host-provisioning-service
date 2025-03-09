@@ -8,7 +8,20 @@ console.log(`insecure: ${process.env.insecure}`);
 console.log(`port: ${process.env.port}`);
 
 const insecure = process.env.insecure || false;
-const port = process.env.port || insecure ? 80 : 443;
+let port = process.env.port;
+if (isNaN(port)) {
+	console.log(
+		'Port was not provided via environment variable or is not a number.',
+	);
+	if (insecure) {
+		port = 80;
+		console.log(`Using default http port: ${port}.`);
+	} else {
+		port = 443;
+		console.log(`Using default https port ${port}.`);
+	}
+	console.log('Set the port environment variable to use a different port.');
+}
 const serverTlsCertificate = process.env.server_tls_certificate;
 const serverTlsPrivateKey = process.env.server_tls_private_key;
 
