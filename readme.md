@@ -78,15 +78,14 @@ The whole point of this is to send cloud-init configuration
 files, so you must write your own and put them in the
 [content](./content) directory.
 I have provided sample files in the [examples](./examples/)
-directory, but they are likely too specific for it to make 
+directory, but they are likely too specific for it to make
 any sense to include real-world examples.
-
 
 > [!IMPORTANT]
 > You must add your ssh key to the
-> [user-data](./content/user-data) file or otherwise 
-> modify/replace the files to suit your needs. Otherwise 
-> you will likely end up with a failed operating system 
+> [user-data](./content/user-data) file or otherwise
+> modify/replace the files to suit your needs. Otherwise
+> you will likely end up with a failed operating system
 > installation or a useless one (since you won't be able
 > to access it).
 

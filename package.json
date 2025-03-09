@@ -1,15 +1,15 @@
 {
-  "name": "host-provisioning-service",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "start": "node ./server.js"
-  },
-  "dependencies": {
-    "express": "^4.21.2"
-  },
-  "type": "module",
-  "devDependencies": {
-    "prettier": "^3.5.3"
-  }
+	"name": "host-provisioning-service",
+	"version": "0.1.0",
+	"private": true,
+	"scripts": {
+		"start": "node ./server.js"
+	},
+	"dependencies": {
+		"express": "^4.21.2"
+	},
+	"type": "module",
+	"devDependencies": {
+		"prettier": "^3.5.3"
+	}
 }
