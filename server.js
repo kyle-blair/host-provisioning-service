@@ -64,6 +64,7 @@ if (insecure) {
 	const serverOptions = {
 		cert: serverTlsCertificate,
 		key: serverTlsPrivateKey,
+		enableTrace: true,
 	};
 
 	server = https.createServer(serverOptions, app).listen(port, () => {
