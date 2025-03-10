@@ -1,38 +1,54 @@
 import express from 'express';
 import path, { dirname } from 'node:path';
 import https from 'node:https';
+import winston from 'winston';
 import { fileURLToPath } from 'node:url';
 
-console.log('configuration directly from environment variable values:');
-console.log(`insecure: ${process.env.insecure}`);
-console.log(`port: ${process.env.port}`);
+const logger = winston.createLogger({
+	level: 'info',
+	format: winston.format.json(),
+	transports: [new winston.transports.Console()],
+});
+logger.info('Attempting to start the host-provisioning-service.');
+
+logger.info('configuration directly from environment variable values:');
+logger.info(`insecure: ${process.env.insecure}`);
+logger.info(`port: ${process.env.port}`);
 
 const insecure = process.env.insecure || false;
 let port = process.env.port;
 if (isNaN(port)) {
-	console.log(
+	logger.info(
 		'Port was not provided via environment variable or is not a number.',
 	);
 	if (insecure) {
 		port = 80;
-		console.log(`Using default http port: ${port}.`);
+		logger.info(`Using default http port: ${port}.`);
 	} else {
 		port = 443;
-		console.log(`Using default https port ${port}.`);
+		logger.info(`Using default https port ${port}.`);
 	}
-	console.log('Set the port environment variable to use a different port.');
+	logger.info('Set the port environment variable to use a different port.');
 }
-const serverTlsCertificate = process.env.server_tls_certificate;
-const serverTlsPrivateKey = process.env.server_tls_private_key;
 
-console.log('configuration after processing:');
-console.log(`insecure: ${insecure}`);
-console.log(`port: ${port}`);
+if (
+	insecure === false &&
+	(process.env.serverTlsCertificate === undefined ||
+		process.env.serverTlsPrivateKey === undefined)
+) {
+	logger.error(
+		'serverTlsCertificate and serverTlsPrivateKey are ' +
+			'required for secure connections. Before running the server, ' + 
+			'export the environment variables (for example ' +
+			'`export serverTlsCertificate="$(cat /path/to/cert.pem)"`). Alternatively, ' +
+			'set insecure to true (not recommended).',
+	);
+	process.exit(1);
+}
 
-const serverOptions = {
-	cert: serverTlsCertificate,
-	key: serverTlsPrivateKey,
-};
+logger.info('configuration after processing:');
+logger.info(`insecure: ${insecure}`);
+logger.info(`port: ${port}`);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -42,10 +58,15 @@ app.use('/cloud-init/v1', express.static(path.join(__dirname, 'content')));
 let server;
 if (insecure) {
 	server = app.listen(port, () => {
-		console.log(`Insecure http server listening on port ${port}`);
+		logger.info(`Insecure http server listening on port ${port}`);
 	});
 } else {
+	const serverOptions = {
+		cert: serverTlsCertificate,
+		key: serverTlsPrivateKey,
+	};
+
 	server = https.createServer(serverOptions, app).listen(port, () => {
-		console.log(`Https server listening on port ${port}`);
+		logger.info(`Https server listening on port ${port}`);
 	});
 }
