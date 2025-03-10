@@ -6,10 +6,13 @@ import { fileURLToPath } from 'node:url';
 
 const logger = winston.createLogger({
 	level: 'info',
-	format: winston.format.json(),
+	format: winston.format.combine(
+		winston.format.timestamp(),
+		winston.format.json(),
+	),
 	transports: [new winston.transports.Console()],
 });
-logger.info('Attempting to start the host-provisioning-service.');
+logger.info('Attempting to start the host-provisioning-service...');
 
 logger.info('configuration directly from environment variable values:');
 logger.info(`insecure: ${process.env.insecure}`);
