@@ -31,24 +31,24 @@ if (isNaN(port)) {
 	logger.info('Set the port environment variable to use a different port.');
 }
 
-if (
-	insecure === false &&
-	(process.env.serverTlsCertificate === undefined ||
-		process.env.serverTlsPrivateKey === undefined)
-) {
-	logger.error(
-		'serverTlsCertificate and serverTlsPrivateKey are ' +
-			'required for secure connections. Before running the server, ' + 
-			'export the environment variables (for example ' +
-			'`export serverTlsCertificate="$(cat /path/to/cert.pem)"`). Alternatively, ' +
-			'set insecure to true (not recommended).',
-	);
-	process.exit(1);
-}
-
 logger.info('configuration after processing:');
 logger.info(`insecure: ${insecure}`);
 logger.info(`port: ${port}`);
+
+if (
+	insecure === false &&
+	(process.env.server_tls_certificate === undefined ||
+		process.env.server_tls_private_key === undefined)
+) {
+	logger.error(
+		'server_tls_certificate and server_tls_private_key are ' +
+			'required for secure connections. Before running the server, ' +
+			'export the environment variables (for example ' +
+			'`export server_tls_certificate="$(cat /path/to/cert.pem)"`). ' +
+			'Alternatively, set insecure to true (not recommended).',
+	);
+	process.exit(1);
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -61,10 +61,14 @@ if (insecure) {
 		logger.info(`Insecure http server listening on port ${port}`);
 	});
 } else {
+	const serverTlsCertificate = process.env.server_tls_certificate;
+	const serverTlsPrivateKey = process.env.server_tls_private_key;
 	const serverOptions = {
 		cert: serverTlsCertificate,
 		key: serverTlsPrivateKey,
 		enableTrace: true,
+		maxVersion: 'TLSv1.3',
+		minVersion: 'TLSv1.2',
 	};
 
 	server = https.createServer(serverOptions, app).listen(port, () => {
