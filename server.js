@@ -8,6 +8,7 @@ const logger = winston.createLogger({
 	level: 'info',
 	format: winston.format.combine(
 		winston.format.timestamp(),
+		winston.format.errors({ stack: true }),
 		winston.format.json(),
 	),
 	transports: [new winston.transports.Console()],
@@ -56,6 +57,40 @@ if (
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const app = express();
+
+let simpleId = 0;
+app.use(function (request, response, next) {
+	request.simpleId = simpleId++;
+	next();
+});
+app.use(function (request, response, next) {
+	logger.info('received request', {
+		request: {
+			id: request.simpleId,
+			url: request.url,
+			protocol: request.protocol,
+			hostname: request.hostname,
+			method: request.method,
+			ip: request.ip,
+		},
+	});
+	response.on('finish', () => {
+		logger.info('sent response', {
+			requestId: request.simpleId,
+			response: {
+				statusCode: response.statusCode,
+			},
+		});
+	});
+	next();
+});
+app.use(function (error, request, response, next) {
+	logger.error('error handling request', {
+		requestId: request.simpleId,
+		error: JSON.stringify(error),
+	});
+	next();
+});
 app.use('/cloud-init/v1', express.static(path.join(__dirname, 'content')));
 
 let server;
@@ -77,3 +112,8 @@ if (insecure) {
 		logger.info(`Https server listening on port ${port}`);
 	});
 }
+
+server.on('error', (error) => {
+	logger.error('The server encountered an error.', error);
+	// process.exit(1);
+});
