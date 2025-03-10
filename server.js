@@ -69,7 +69,6 @@ if (insecure) {
 	const serverOptions = {
 		cert: serverTlsCertificate,
 		key: serverTlsPrivateKey,
-		enableTrace: true,
 		maxVersion: 'TLSv1.3',
 		minVersion: 'TLSv1.2',
 	};
