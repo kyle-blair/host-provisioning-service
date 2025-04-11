@@ -121,6 +121,9 @@ cd host-provisioning-service
 
 ```shell
 npm install
+# The default port 443 requires elevated permission.
+# Use 10000 for now.
+export port=10000
 export server_tls_certificate=$(cat /path/to/certificate.pem)
 export server_tls_private_key=$(cat /path/to/private-key.pem)
 npm start
