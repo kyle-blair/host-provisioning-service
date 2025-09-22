@@ -66,6 +66,10 @@ const metaDataCounterPath = path.join(
 	contentDirectory,
 	'.meta-data-hostname-counter',
 );
+const metaDataAssignmentsPath = path.join(
+	contentDirectory,
+	'.meta-data-instance-assignments.json',
+);
 const generatedInstancesLogPath = path.join(
 	contentDirectory,
 	'generated-instances.log',
@@ -98,6 +102,52 @@ const persistMetaDataHostnameCounter = () => {
 		writeFileSync(metaDataCounterPath, `${metaDataHostnameCounter}`, 'utf8');
 	} catch (error) {
 		logger.error('Failed to persist hostname counter.', {
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
+};
+
+const metaDataInstanceAssignments = new Map();
+try {
+	if (existsSync(metaDataAssignmentsPath)) {
+		const rawAssignments = readFileSync(metaDataAssignmentsPath, 'utf8').trim();
+		if (rawAssignments.length > 0) {
+			const parsedAssignments = JSON.parse(rawAssignments);
+			if (parsedAssignments && typeof parsedAssignments === 'object') {
+				for (const [key, value] of Object.entries(parsedAssignments)) {
+					if (
+						value &&
+						typeof value === 'object' &&
+						typeof value.instanceId === 'string' &&
+						typeof value.hostname === 'string'
+					) {
+						metaDataInstanceAssignments.set(key, {
+							instanceId: value.instanceId,
+							hostname: value.hostname,
+						});
+					}
+				}
+			}
+		}
+	}
+} catch (error) {
+	logger.warn('Failed to load instance assignments, starting empty...', {
+		error: error instanceof Error ? error.message : String(error),
+	});
+}
+
+const persistMetaDataInstanceAssignments = () => {
+	try {
+		const serializedAssignments = Object.fromEntries(
+			metaDataInstanceAssignments.entries(),
+		);
+		writeFileSync(
+			metaDataAssignmentsPath,
+			JSON.stringify(serializedAssignments),
+			'utf8',
+		);
+	} catch (error) {
+		logger.error('Failed to persist instance assignments.', {
 			error: error instanceof Error ? error.message : String(error),
 		});
 	}
@@ -152,13 +202,21 @@ app.get('/cloud-init/v1/user-data', (_, response) => {
 	response.type('text/plain').send(userDataContent);
 });
 
-app.get('/cloud-init/v1/meta-data', (_, response) => {
-	const instanceId = randomUUID();
-	const hostnameSuffix = metaDataHostnameCounter.toString().padStart(2, '0');
-	metaDataHostnameCounter += 1;
-	persistMetaDataHostnameCounter();
-	const hostname = `server-${hostnameSuffix}`;
-	logGeneratedInstance(instanceId, hostname);
+app.get('/cloud-init/v1/meta-data', (request, response) => {
+	const clientIdentifier = request.ip;
+	let assignment = metaDataInstanceAssignments.get(clientIdentifier);
+	if (!assignment) {
+		const instanceId = randomUUID();
+		const hostnameSuffix = metaDataHostnameCounter.toString().padStart(2, '0');
+		metaDataHostnameCounter += 1;
+		persistMetaDataHostnameCounter();
+		const hostname = `server-${hostnameSuffix}`;
+		assignment = { instanceId, hostname };
+		metaDataInstanceAssignments.set(clientIdentifier, assignment);
+		persistMetaDataInstanceAssignments();
+		logGeneratedInstance(instanceId, hostname);
+	}
+	const { instanceId, hostname } = assignment;
 	const metaDataBody = metaDataTemplate
 		.replace(/instance-id: .*/g, `instance-id: ${instanceId}`)
 		.replace(/local-hostname: .*/g, `local-hostname: ${hostname}`)
