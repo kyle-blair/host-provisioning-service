@@ -3,7 +3,7 @@ import path, { dirname } from 'node:path';
 import https from 'node:https';
 import winston from 'winston';
 import { fileURLToPath } from 'node:url';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFile, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 
 const logger = winston.createLogger({
@@ -66,6 +66,10 @@ const metaDataCounterPath = path.join(
 	contentDirectory,
 	'.meta-data-hostname-counter',
 );
+const generatedInstancesLogPath = path.join(
+	contentDirectory,
+	'generated-instances.log',
+);
 const metaDataTemplate = readFileSync(metaDataPath, 'utf8');
 const userDataContent = readFileSync(userDataPath, 'utf8');
 let metaDataHostnameCounter = 0;
@@ -99,8 +103,19 @@ const persistMetaDataHostnameCounter = () => {
 	}
 };
 
+const logGeneratedInstance = (instanceId, hostname) => {
+	const logLine = `${new Date().toISOString()} instance-id=${instanceId} hostname=${hostname}\n`;
+	appendFile(generatedInstancesLogPath, logLine, (error) => {
+		if (error) {
+			logger.error('Failed to log generated instance.', {
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
+	});
+};
+
 let simpleId = 0;
-app.use(function (request, response, next) {
+app.use(function (request, _, next) {
 	request.simpleId = simpleId++;
 	next();
 });
@@ -132,6 +147,7 @@ app.use(function (error, request, _, next) {
 	});
 	next();
 });
+
 app.get('/cloud-init/v1/user-data', (_, response) => {
 	response.type('text/plain').send(userDataContent);
 });
@@ -142,6 +158,7 @@ app.get('/cloud-init/v1/meta-data', (_, response) => {
 	metaDataHostnameCounter += 1;
 	persistMetaDataHostnameCounter();
 	const hostname = `server-${hostnameSuffix}`;
+	logGeneratedInstance(instanceId, hostname);
 	const metaDataBody = metaDataTemplate
 		.replace(/instance-id: .*/g, `instance-id: ${instanceId}`)
 		.replace(/local-hostname: .*/g, `local-hostname: ${hostname}`)
