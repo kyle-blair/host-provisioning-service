@@ -202,6 +202,9 @@ app.get('/cloud-init/v1/user-data', (_, response) => {
 	response.type('text/plain').send(userDataContent);
 });
 
+app.get('/cloud-init/v1/vendor-data', (_, response) => {
+	response.type('text/plain').send('');
+});
 app.get('/cloud-init/v1/meta-data', (request, response) => {
 	const clientIdentifier = request.ip;
 	let assignment = metaDataInstanceAssignments.get(clientIdentifier);
