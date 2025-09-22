@@ -4,6 +4,7 @@ import https from 'node:https';
 import winston from 'winston';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 
 const logger = winston.createLogger({
 	level: 'info',
@@ -123,7 +124,7 @@ app.use(function (request, response, next) {
 	});
 	next();
 });
-app.use(function (error, request, response, next) {
+app.use(function (error, request, _, next) {
 	logger.error('error handling request', {
 		requestId: request.simpleId,
 		error: JSON.stringify(error),
@@ -134,12 +135,16 @@ app.get('/cloud-init/v1/user-data', (_, response) => {
 	response.type('text/plain').send(userDataContent);
 });
 
+// TODO: Make the instance-id a unique uuid per request.
+
 app.get('/cloud-init/v1/meta-data', (_, response) => {
+	const instanceId = randomUUID();
 	const hostnameSuffix = metaDataHostnameCounter.toString().padStart(2, '0');
 	metaDataHostnameCounter += 1;
 	persistMetaDataHostnameCounter();
 	const hostname = `server-${hostnameSuffix}`;
 	const metaDataBody = metaDataTemplate
+		.replace(/instance-id: .*/g, `instance-id: ${instanceId}`)
 		.replace(/local-hostname: .*/g, `local-hostname: ${hostname}`)
 		.replace(/hostname: .*/g, `hostname: ${hostname}`);
 	response.type('text/plain').send(metaDataBody);
