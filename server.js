@@ -82,6 +82,7 @@ try {
 				'The hostname counter file contained an invalid value. Starting from 0...',
 			);
 		}
+	}
 } catch (error) {
 	logger.warn('Failed to load hostname counter, starting from 0...', {
 		error: error instanceof Error ? error.message : String(error),
@@ -134,8 +135,6 @@ app.use(function (error, request, _, next) {
 app.get('/cloud-init/v1/user-data', (_, response) => {
 	response.type('text/plain').send(userDataContent);
 });
-
-// TODO: Make the instance-id a unique uuid per request.
 
 app.get('/cloud-init/v1/meta-data', (_, response) => {
 	const instanceId = randomUUID();
