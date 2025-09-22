@@ -3,6 +3,7 @@ import path, { dirname } from 'node:path';
 import https from 'node:https';
 import winston from 'winston';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 
 const logger = winston.createLogger({
 	level: 'info',
@@ -57,6 +58,12 @@ if (
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const app = express();
+const contentDirectory = path.join(__dirname, 'content');
+const metaDataPath = path.join(contentDirectory, 'meta-data');
+const userDataPath = path.join(contentDirectory, 'user-data');
+const metaDataTemplate = readFileSync(metaDataPath, 'utf8');
+const userDataContent = readFileSync(userDataPath, 'utf8');
+let metaDataHostnameCounter = 0;
 
 let simpleId = 0;
 app.use(function (request, response, next) {
@@ -91,7 +98,18 @@ app.use(function (error, request, response, next) {
 	});
 	next();
 });
-app.use('/cloud-init/v1', express.static(path.join(__dirname, 'content')));
+app.get('/cloud-init/v1/user-data', (_, response) => {
+	response.type('text/plain').send(userDataContent);
+});
+
+app.get('/cloud-init/v1/meta-data', (_, response) => {
+	const hostnameSuffix = (metaDataHostnameCounter++).toString().padStart(2, '0');
+	const hostname = `server-${hostnameSuffix}`;
+	const metaDataBody = metaDataTemplate
+		.replace(/local-hostname: .*/g, `local-hostname: ${hostname}`)
+		.replace(/hostname: .*/g, `hostname: ${hostname}`);
+	response.type('text/plain').send(metaDataBody);
+});
 
 let server;
 if (insecure) {
