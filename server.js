@@ -3,7 +3,7 @@ import path, { dirname } from 'node:path';
 import https from 'node:https';
 import winston from 'winston';
 import { fileURLToPath } from 'node:url';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 const logger = winston.createLogger({
 	level: 'info',
@@ -61,9 +61,41 @@ const app = express();
 const contentDirectory = path.join(__dirname, 'content');
 const metaDataPath = path.join(contentDirectory, 'meta-data');
 const userDataPath = path.join(contentDirectory, 'user-data');
+const metaDataCounterPath = path.join(
+	contentDirectory,
+	'.meta-data-hostname-counter',
+);
 const metaDataTemplate = readFileSync(metaDataPath, 'utf8');
 const userDataContent = readFileSync(userDataPath, 'utf8');
 let metaDataHostnameCounter = 0;
+try {
+	if (existsSync(metaDataCounterPath)) {
+		const storedCounter = Number.parseInt(
+			readFileSync(metaDataCounterPath, 'utf8').trim(),
+			10,
+		);
+		if (!Number.isNaN(storedCounter)) {
+			metaDataHostnameCounter = storedCounter;
+		} else {
+			logger.warn(
+				'The hostname counter file contained an invalid value. Starting from 0...',
+			);
+		}
+} catch (error) {
+	logger.warn('Failed to load hostname counter, starting from 0...', {
+		error: error instanceof Error ? error.message : String(error),
+	});
+}
+
+const persistMetaDataHostnameCounter = () => {
+	try {
+		writeFileSync(metaDataCounterPath, `${metaDataHostnameCounter}`, 'utf8');
+	} catch (error) {
+		logger.error('Failed to persist hostname counter.', {
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
+};
 
 let simpleId = 0;
 app.use(function (request, response, next) {
@@ -103,7 +135,9 @@ app.get('/cloud-init/v1/user-data', (_, response) => {
 });
 
 app.get('/cloud-init/v1/meta-data', (_, response) => {
-	const hostnameSuffix = (metaDataHostnameCounter++).toString().padStart(2, '0');
+	const hostnameSuffix = metaDataHostnameCounter.toString().padStart(2, '0');
+	metaDataHostnameCounter += 1;
+	persistMetaDataHostnameCounter();
 	const hostname = `server-${hostnameSuffix}`;
 	const metaDataBody = metaDataTemplate
 		.replace(/local-hostname: .*/g, `local-hostname: ${hostname}`)
