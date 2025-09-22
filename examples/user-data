@@ -1,38 +1,33 @@
 #cloud-config
 
-# The autoinstall directive and cloud-init have some confusing overlap.
-# Perhaps it's correct to say that the autoinstall directive is used 
-# to configure the installer, while cloud-init is used to configure the
-# installed system.
-# In any case, I couldn't find an easy way to enable the ssh server 
-# via cloud-init, while autoinstall has a simple key for it.
-# Supposedly, the user-data section will be passed along to cloud-init.
-autoinstall:
-  version: 1
-  ssh:
-    install-server: true
+disable_root: true
+ssh_pwauth: false
+locale: en_US
+keyboard:
+  layout: us
 
-  user-data:
-    disable_root: true
-    ssh_pwauth: false
-    allow_public_ssh_keys: false
+packages:
+  - openssh-server
 
-    locale: en_US
-    keyboard:
-      layout: us
+users:
+  - default
+  - name: kona
+    groups: sudo
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHZI3vqovdsb1bWJjTvx8/19MogHnkBaXmdOSzLhfTT0
+  - name: operator
+    groups: sudo
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHZI3vqovdsb1bWJjTvx8/19MogHnkBaXmdOSzLhfTT0
 
-    users:
-    - name: operator
-      groups: sudo
-      sudo: ALL=(ALL) NOPASSWD:ALL
-      shell: /bin/bash
-      lock_passwd: true
-      ssh_authorized_keys:
-        - <your-public-ssh-key>
-
-    write_files:
-    - path: /home/operator/hello-world.txt
-      content: |
-        This system was provisioned automatically.
-      owner: operator:operator
-      defer: true
+write_files:
+  - path: /home/operator/hello-world.txt
+    content: |
+      This system was provisioned automatically.
+    owner: operator:operator
+    defer: true
