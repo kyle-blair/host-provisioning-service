@@ -17,6 +17,7 @@ users:
     ssh_authorized_keys:
       - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHZI3vqovdsb1bWJjTvx8/19MogHnkBaXmdOSzLhfTT0
   - name: operator
+    primary_group: operator
     groups: sudo
     sudo: ALL=(ALL) NOPASSWD:ALL
     shell: /bin/bash
