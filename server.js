@@ -164,6 +164,22 @@ const logGeneratedInstance = (instanceId, hostname) => {
 	});
 };
 
+const getOrCreateAssignment = (clientIdentifier) => {
+	let assignment = metaDataInstanceAssignments.get(clientIdentifier);
+	if (!assignment) {
+		const instanceId = randomUUID();
+		const hostnameSuffix = metaDataHostnameCounter.toString().padStart(2, '0');
+		metaDataHostnameCounter += 1;
+		persistMetaDataHostnameCounter();
+		const hostname = `server-${hostnameSuffix}`;
+		assignment = { instanceId, hostname };
+		metaDataInstanceAssignments.set(clientIdentifier, assignment);
+		persistMetaDataInstanceAssignments();
+		logGeneratedInstance(instanceId, hostname);
+	}
+	return assignment;
+};
+
 let simpleId = 0;
 app.use(function (request, _, next) {
 	request.simpleId = simpleId++;
@@ -205,21 +221,26 @@ app.get('/cloud-init/v1/user-data', (_, response) => {
 app.get('/cloud-init/v1/vendor-data', (_, response) => {
 	response.type('text/plain').send('');
 });
+
 app.get('/cloud-init/v1/meta-data', (request, response) => {
-	const clientIdentifier = request.ip;
-	let assignment = metaDataInstanceAssignments.get(clientIdentifier);
-	if (!assignment) {
-		const instanceId = randomUUID();
-		const hostnameSuffix = metaDataHostnameCounter.toString().padStart(2, '0');
-		metaDataHostnameCounter += 1;
-		persistMetaDataHostnameCounter();
-		const hostname = `server-${hostnameSuffix}`;
-		assignment = { instanceId, hostname };
-		metaDataInstanceAssignments.set(clientIdentifier, assignment);
-		persistMetaDataInstanceAssignments();
-		logGeneratedInstance(instanceId, hostname);
-	}
-	const { instanceId, hostname } = assignment;
+	const { instanceId, hostname } = getOrCreateAssignment(request.ip);
+	const metaDataBody = metaDataTemplate
+		.replace(/instance-id: .*/g, `instance-id: ${instanceId}`)
+		.replace(/local-hostname: .*/g, `local-hostname: ${hostname}`)
+		.replace(/hostname: .*/g, `hostname: ${hostname}`);
+	response.type('text/plain').send(metaDataBody);
+});
+
+app.get('/cloud-init/v2/:vmgenId/:dmiUuid/user-data', (_, response) => {
+	response.type('text/plain').send(userDataContent);
+});
+
+app.get('/cloud-init/v2/:vmgenId/:dmiUuid/vendor-data', (_, response) => {
+	response.type('text/plain').send('');
+});
+app.get('/cloud-init/v2/:vmgenId/:dmiUuid/meta-data', (request, response) => {
+	const { vmgenId, dmiUuid } = request.params;
+	const { instanceId, hostname } = getOrCreateAssignment(`${vmgenId}:${dmiUuid}`);
 	const metaDataBody = metaDataTemplate
 		.replace(/instance-id: .*/g, `instance-id: ${instanceId}`)
 		.replace(/local-hostname: .*/g, `local-hostname: ${hostname}`)
