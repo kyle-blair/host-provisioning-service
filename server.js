@@ -166,7 +166,12 @@ const logGeneratedInstance = (instanceId, hostname) => {
 
 const getOrCreateAssignment = (clientIdentifier) => {
 	let assignment = metaDataInstanceAssignments.get(clientIdentifier);
-	if (!assignment) {
+	if (assignment) {
+		logger.info('Found existing instance assignment.', { clientIdentifier, assignment });
+	} else {
+		logger.info('No existing instance assignment found. Generating new one.', {
+			clientIdentifier,
+		});
 		const instanceId = randomUUID();
 		const hostnameSuffix = metaDataHostnameCounter.toString().padStart(2, '0');
 		metaDataHostnameCounter += 1;
