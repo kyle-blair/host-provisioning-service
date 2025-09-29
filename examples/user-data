@@ -2,7 +2,7 @@
 
 disable_root: true
 ssh_pwauth: false
-locale: en_US
+locale: en_US.UTF-8
 keyboard:
   layout: us
 
