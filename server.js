@@ -76,6 +76,40 @@ const generatedInstancesLogPath = path.join(
 );
 const metaDataTemplate = readFileSync(metaDataPath, 'utf8');
 const userDataContent = readFileSync(userDataPath, 'utf8');
+
+const STATIC_IP_PREFIX = '10.0.10.';
+const STATIC_IP_START = 100;
+const CONTROL_IP_START = 100;
+const CONTROL_IP_END = 199;
+const WORKER_IP_START = 200;
+const WORKER_IP_END = 254;
+const computeStaticIpAddress = (index) =>
+	`${STATIC_IP_PREFIX}${STATIC_IP_START + index}`;
+const computePrefixedStaticIp = (offset, ceiling, suffixNumber) => {
+	const lastOctet = offset + suffixNumber;
+	return `${STATIC_IP_PREFIX}${lastOctet > ceiling ? ceiling : lastOctet}`;
+};
+const deriveIpAddressFromHostname = (hostname) => {
+	if (typeof hostname !== 'string') {
+		return computeStaticIpAddress(0);
+	}
+	const match = hostname.match(/(\d+)$/);
+	if (!match) {
+		return computeStaticIpAddress(0);
+	}
+	const suffixNumber = Number.parseInt(match[1], 10);
+	if (Number.isNaN(suffixNumber)) {
+		return computeStaticIpAddress(0);
+	}
+	if (hostname.startsWith('control')) {
+		return computePrefixedStaticIp(CONTROL_IP_START, CONTROL_IP_END, suffixNumber);
+	}
+	if (hostname.startsWith('worker')) {
+		return computePrefixedStaticIp(WORKER_IP_START, WORKER_IP_END, suffixNumber);
+	}
+	return computeStaticIpAddress(suffixNumber);
+};
+
 let metaDataHostnameCounter = 0;
 try {
 	if (existsSync(metaDataCounterPath)) {
@@ -108,6 +142,7 @@ const persistMetaDataHostnameCounter = () => {
 };
 
 const metaDataInstanceAssignments = new Map();
+let shouldPersistLoadedAssignments = false;
 try {
 	if (existsSync(metaDataAssignmentsPath)) {
 		const rawAssignments = readFileSync(metaDataAssignmentsPath, 'utf8').trim();
@@ -121,9 +156,17 @@ try {
 						typeof value.instanceId === 'string' &&
 						typeof value.hostname === 'string'
 					) {
+						const ipAddress =
+							typeof value.ipAddress === 'string' && value.ipAddress.length > 0
+								? value.ipAddress
+								: deriveIpAddressFromHostname(value.hostname);
+						if (typeof value.ipAddress !== 'string' || value.ipAddress.length === 0) {
+							shouldPersistLoadedAssignments = true;
+						}
 						metaDataInstanceAssignments.set(key, {
 							instanceId: value.instanceId,
 							hostname: value.hostname,
+							ipAddress,
 						});
 					}
 				}
@@ -153,8 +196,12 @@ const persistMetaDataInstanceAssignments = () => {
 	}
 };
 
-const logGeneratedInstance = (instanceId, hostname) => {
-	const logLine = `${new Date().toISOString()} instance-id=${instanceId} hostname=${hostname}\n`;
+if (shouldPersistLoadedAssignments) {
+	persistMetaDataInstanceAssignments();
+}
+
+const logGeneratedInstance = (instanceId, hostname, ipAddress) => {
+	const logLine = `${new Date().toISOString()} instance-id=${instanceId} hostname=${hostname} ip-address=${ipAddress}\n`;
 	appendFile(generatedInstancesLogPath, logLine, (error) => {
 		if (error) {
 			logger.error('Failed to log generated instance.', {
@@ -168,19 +215,30 @@ const getOrCreateAssignment = (clientIdentifier) => {
 	let assignment = metaDataInstanceAssignments.get(clientIdentifier);
 	if (assignment) {
 		logger.info('Found existing instance assignment.', { clientIdentifier, assignment });
+		if (typeof assignment.ipAddress !== 'string' || assignment.ipAddress.length === 0) {
+			const updatedAssignment = {
+				...assignment,
+				ipAddress: deriveIpAddressFromHostname(assignment.hostname),
+			};
+			metaDataInstanceAssignments.set(clientIdentifier, updatedAssignment);
+			persistMetaDataInstanceAssignments();
+			assignment = updatedAssignment;
+		}
 	} else {
 		logger.info('No existing instance assignment found. Generating new one.', {
 			clientIdentifier,
 		});
 		const instanceId = randomUUID();
-		const hostnameSuffix = metaDataHostnameCounter.toString().padStart(2, '0');
+		const hostIndex = metaDataHostnameCounter;
+		const hostnameSuffix = hostIndex.toString().padStart(2, '0');
 		metaDataHostnameCounter += 1;
 		persistMetaDataHostnameCounter();
 		const hostname = `server-${hostnameSuffix}`;
-		assignment = { instanceId, hostname };
+		const ipAddress = computeStaticIpAddress(hostIndex);
+		assignment = { instanceId, hostname, ipAddress };
 		metaDataInstanceAssignments.set(clientIdentifier, assignment);
 		persistMetaDataInstanceAssignments();
-		logGeneratedInstance(instanceId, hostname);
+		logGeneratedInstance(instanceId, hostname, ipAddress);
 	}
 	return assignment;
 };
@@ -228,29 +286,62 @@ app.get('/cloud-init/v1/vendor-data', (_, response) => {
 });
 
 app.get('/cloud-init/v1/meta-data', (request, response) => {
-	const { instanceId, hostname } = getOrCreateAssignment(request.ip);
+	const { instanceId, hostname, ipAddress } = getOrCreateAssignment(request.ip);
 	const metaDataBody = metaDataTemplate
 		.replace(/instance-id: .*/g, `instance-id: ${instanceId}`)
 		.replace(/local-hostname: .*/g, `local-hostname: ${hostname}`)
-		.replace(/hostname: .*/g, `hostname: ${hostname}`);
+		.replace(/hostname: .*/g, `hostname: ${hostname}`)
+		.replace(
+			/(addresses:\s*\[)(\d+\.\d+\.\d+\.\d+)(\/\d+])/,
+			`$1${ipAddress}$3`,
+		);
 	response.type('text/plain').send(metaDataBody);
 });
 
 app.get('/cloud-init/v2/:vmgenId/:dmiUuid/user-data', (_, response) => {
 	response.type('text/plain').send(userDataContent);
 });
-
 app.get('/cloud-init/v2/:vmgenId/:dmiUuid/vendor-data', (_, response) => {
 	response.type('text/plain').send('');
 });
 app.get('/cloud-init/v2/:vmgenId/:dmiUuid/meta-data', (request, response) => {
 	const { vmgenId, dmiUuid } = request.params;
-	const { instanceId, hostname } = getOrCreateAssignment(`${vmgenId}:${dmiUuid}`);
+	const { instanceId, hostname, ipAddress } = getOrCreateAssignment(`${vmgenId}:${dmiUuid}`);
 	const metaDataBody = metaDataTemplate
 		.replace(/instance-id: .*/g, `instance-id: ${instanceId}`)
 		.replace(/local-hostname: .*/g, `local-hostname: ${hostname}`)
-		.replace(/hostname: .*/g, `hostname: ${hostname}`);
+		.replace(/hostname: .*/g, `hostname: ${hostname}`)
+		.replace(
+			/(addresses:\s*\[)(\d+\.\d+\.\d+\.\d+)(\/\d+])/,
+			`$1${ipAddress}$3`,
+		);
 	response.type('text/plain').send(metaDataBody);
+});
+
+app.get('/cloud-init/v3/:vmgenId/:vmName/user-data', (_, response) => {
+	response.type('text/plain').send(userDataContent);
+});
+app.get('/cloud-init/v3/:vmgenId/:vmName/vendor-data', (_, response) => {
+	response.type('text/plain').send('');
+});
+app.get('/cloud-init/v3/:vmgenId/:vmName/meta-data', (request, response) => {
+	const { vmgenId, vmName } = request.params;
+	const clientIdentifier = `${vmgenId}:${vmName}`;
+	const { instanceId, ipAddress } = getOrCreateAssignment(clientIdentifier);
+	const metaDataBody = metaDataTemplate
+		.replace(/instance-id: .*/g, `instance-id: ${instanceId}`)
+		.replace(/local-hostname: .*/g, `local-hostname: ${vmName}`)
+		.replace(/hostname: .*/g, `hostname: ${vmName}.home.arpa`)
+		.replace(
+			/(addresses:\s*\[)(\d+\.\d+\.\d+\.\d+)(\/\d+])/,
+			`$1${ipAddress}$3`,
+		);
+	response.type('text/plain').send(metaDataBody);
+});
+
+// Catch-all for other routes
+app.use((_, response) => {
+	response.status(404).type('text/plain').send('Not Found');
 });
 
 let server;
