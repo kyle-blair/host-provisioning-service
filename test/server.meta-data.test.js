@@ -23,9 +23,9 @@ const ASSIGNMENTS_PATH = join(
 	'.meta-data-instance-assignments.json',
 );
 const LOG_PATH = join(CONTENT_DIR, 'generated-instances.log');
-const PORT = 3001;
+const PORT = 3002;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
-const NETWORK_CONFIG_URL = `${BASE_URL}/cloud-init/v3/test-suite/control-00/network-config`;
+const META_DATA_URL = `${BASE_URL}/cloud-init/v3/test-suite/control-00/meta-data`;
 
 let serverProcess;
 let counterSnapshot = '';
@@ -92,11 +92,11 @@ after(async () => {
 	}
 });
 
-const fetchNetworkConfig = async () => {
+const fetchMetaData = async () => {
 	const maxAttempts = 20;
 	for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
 		try {
-			const response = await fetch(NETWORK_CONFIG_URL);
+			const response = await fetch(META_DATA_URL);
 			if (response.ok) {
 				return response;
 			}
@@ -107,15 +107,17 @@ const fetchNetworkConfig = async () => {
 		}
 		await delay(100);
 	}
-	throw new Error('Server did not respond to network-config request');
+	throw new Error('Server did not respond to meta-data request');
 };
 
-test('network config assigns stable IP for control-00', async () => {
-	const firstResponse = await fetchNetworkConfig();
+test('meta-data returns stable assignment for vm', async () => {
+	const firstResponse = await fetchMetaData();
 	const firstBody = await firstResponse.text();
-	assert.ok(firstBody.includes('10.0.10.100'));
+	assert.match(firstBody, /^instance-id: .+/m);
+	assert.match(firstBody, /^local-hostname: control-00$/m);
+	assert.match(firstBody, /^hostname: control-00\.home\.arpa$/m);
 
-	const secondResponse = await fetchNetworkConfig();
+	const secondResponse = await fetchMetaData();
 	const secondBody = await secondResponse.text();
-	assert.ok(secondBody.includes('10.0.10.100'));
+	assert.strictEqual(secondBody, firstBody);
 });

@@ -4,7 +4,7 @@
 	"private": true,
 	"scripts": {
 		"start": "node ./src/server.js",
-		"test": "node --test --test-coverage"
+		"test": "node --test --experimental-test-coverage --test-coverage-branches=50 --test-coverage-functions=80 --test-coverage-lines=80"
 	},
 	"dependencies": {
 		"express": "^4.21.2",

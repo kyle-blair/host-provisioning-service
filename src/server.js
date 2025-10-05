@@ -62,7 +62,6 @@ const app = express();
 const contentDirectory = path.join(__dirname, '..', 'content');
 const metaDataPath = path.join(contentDirectory, 'meta-data');
 const userDataPath = path.join(contentDirectory, 'user-data');
-const networkConfigPath = path.join(contentDirectory, 'network-config');
 const metaDataCounterPath = path.join(
 	contentDirectory,
 	'.meta-data-hostname-counter',
@@ -77,7 +76,6 @@ const generatedInstancesLogPath = path.join(
 );
 const metaDataTemplate = readFileSync(metaDataPath, 'utf8');
 const userDataContent = readFileSync(userDataPath, 'utf8');
-const networkConfigTemplate = readFileSync(networkConfigPath, 'utf8');
 
 const STATIC_IP_PREFIX = '10.0.10.';
 const STATIC_IP_START = 100;
@@ -104,10 +102,18 @@ const deriveIpAddressFromHostname = (hostname) => {
 		return computeStaticIpAddress(0);
 	}
 	if (hostname.startsWith('control')) {
-		return computePrefixedStaticIp(CONTROL_IP_START, CONTROL_IP_END, suffixNumber);
+		return computePrefixedStaticIp(
+			CONTROL_IP_START,
+			CONTROL_IP_END,
+			suffixNumber,
+		);
 	}
 	if (hostname.startsWith('worker')) {
-		return computePrefixedStaticIp(WORKER_IP_START, WORKER_IP_END, suffixNumber);
+		return computePrefixedStaticIp(
+			WORKER_IP_START,
+			WORKER_IP_END,
+			suffixNumber,
+		);
 	}
 	return computeStaticIpAddress(suffixNumber);
 };
@@ -162,7 +168,10 @@ try {
 							typeof value.ipAddress === 'string' && value.ipAddress.length > 0
 								? value.ipAddress
 								: deriveIpAddressFromHostname(value.hostname);
-						if (typeof value.ipAddress !== 'string' || value.ipAddress.length === 0) {
+						if (
+							typeof value.ipAddress !== 'string' ||
+							value.ipAddress.length === 0
+						) {
 							shouldPersistLoadedAssignments = true;
 						}
 						metaDataInstanceAssignments.set(key, {
@@ -216,8 +225,14 @@ const logGeneratedInstance = (instanceId, hostname, ipAddress) => {
 const getOrCreateAssignment = (clientIdentifier) => {
 	let assignment = metaDataInstanceAssignments.get(clientIdentifier);
 	if (assignment) {
-		logger.info('Found existing instance assignment.', { clientIdentifier, assignment });
-		if (typeof assignment.ipAddress !== 'string' || assignment.ipAddress.length === 0) {
+		logger.info('Found existing instance assignment.', {
+			clientIdentifier,
+			assignment,
+		});
+		if (
+			typeof assignment.ipAddress !== 'string' ||
+			assignment.ipAddress.length === 0
+		) {
 			const updatedAssignment = {
 				...assignment,
 				ipAddress: deriveIpAddressFromHostname(assignment.hostname),
@@ -290,13 +305,9 @@ app.get('/cloud-init/v1/vendor-data', (_, response) => {
 app.get('/cloud-init/v1/meta-data', (request, response) => {
 	const { instanceId, hostname, ipAddress } = getOrCreateAssignment(request.ip);
 	const metaDataBody = metaDataTemplate
-		.replace(/instance-id: .*/g, `instance-id: ${instanceId}`)
-		.replace(/local-hostname: .*/g, `local-hostname: ${hostname}`)
-		.replace(/hostname: .*/g, `hostname: ${hostname}`)
-		.replace(
-			/(addresses:\s*\[)(\d+\.\d+\.\d+\.\d+)(\/\d+])/,
-			`$1${ipAddress}$3`,
-		);
+		.replace(/^instance-id: .*/gm, `instance-id: ${instanceId}`)
+		.replace(/^local-hostname: .*/gm, `local-hostname: ${hostname}`)
+		.replace(/^hostname: .*/gm, `hostname: ${hostname}`);
 	response.type('text/plain').send(metaDataBody);
 });
 
@@ -308,15 +319,13 @@ app.get('/cloud-init/v2/:vmgenId/:dmiUuid/vendor-data', (_, response) => {
 });
 app.get('/cloud-init/v2/:vmgenId/:dmiUuid/meta-data', (request, response) => {
 	const { vmgenId, dmiUuid } = request.params;
-	const { instanceId, hostname, ipAddress } = getOrCreateAssignment(`${vmgenId}:${dmiUuid}`);
+	const { instanceId, hostname } = getOrCreateAssignment(
+		`${vmgenId}:${dmiUuid}`,
+	);
 	const metaDataBody = metaDataTemplate
-		.replace(/instance-id: .*/g, `instance-id: ${instanceId}`)
-		.replace(/local-hostname: .*/g, `local-hostname: ${hostname}`)
-		.replace(/hostname: .*/g, `hostname: ${hostname}`)
-		.replace(
-			/(addresses:\s*\[)(\d+\.\d+\.\d+\.\d+)(\/\d+])/,
-			`$1${ipAddress}$3`,
-		);
+		.replace(/^instance-id: .*/gm, `instance-id: ${instanceId}`)
+		.replace(/^local-hostname: .*/gm, `local-hostname: ${hostname}`)
+		.replace(/^hostname: .*/gm, `hostname: ${hostname}.home.arpa`);
 	response.type('text/plain').send(metaDataBody);
 });
 
@@ -326,28 +335,14 @@ app.get('/cloud-init/v3/:vmgenId/:vmName/user-data', (_, response) => {
 app.get('/cloud-init/v3/:vmgenId/:vmName/vendor-data', (_, response) => {
 	response.type('text/plain').send('');
 });
-app.get('/cloud-init/v3/:vmgenId/:vmName/network-config', (request, response) => {
-	const { vmgenId, vmName } = request.params;
-	const clientIdentifier = `${vmgenId}:${vmName}`;
-	const { ipAddress } = getOrCreateAssignment(clientIdentifier);
-	const networkConfigBody = networkConfigTemplate.replace(
-		/(addresses:\s*\[)(\d+\.\d+\.\d+\.\d+)(\/\d+])/,
-		`$1${ipAddress}$3`,
-	);
-	response.type('text/yaml').send(networkConfigBody);
-});
 app.get('/cloud-init/v3/:vmgenId/:vmName/meta-data', (request, response) => {
 	const { vmgenId, vmName } = request.params;
 	const clientIdentifier = `${vmgenId}:${vmName}`;
-	const { instanceId, ipAddress } = getOrCreateAssignment(clientIdentifier);
+	const { instanceId } = getOrCreateAssignment(clientIdentifier);
 	const metaDataBody = metaDataTemplate
-		.replace(/instance-id: .*/g, `instance-id: ${instanceId}`)
-		.replace(/local-hostname: .*/g, `local-hostname: ${vmName}`)
-		.replace(/hostname: .*/g, `hostname: ${vmName}.home.arpa`)
-		.replace(
-			/(addresses:\s*\[)(\d+\.\d+\.\d+\.\d+)(\/\d+])/,
-			`$1${ipAddress}$3`,
-		);
+		.replace(/^instance-id: .*/gm, `instance-id: ${instanceId}`)
+		.replace(/^local-hostname: .*/gm, `local-hostname: ${vmName}`)
+		.replace(/^hostname: .*/gm, `hostname: ${vmName}.home.arpa`);
 	response.type('text/plain').send(metaDataBody);
 });
 
