@@ -59,9 +59,10 @@ if (
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const app = express();
-const contentDirectory = path.join(__dirname, 'content');
+const contentDirectory = path.join(__dirname, '..', 'content');
 const metaDataPath = path.join(contentDirectory, 'meta-data');
 const userDataPath = path.join(contentDirectory, 'user-data');
+const networkConfigPath = path.join(contentDirectory, 'network-config');
 const metaDataCounterPath = path.join(
 	contentDirectory,
 	'.meta-data-hostname-counter',
@@ -76,6 +77,7 @@ const generatedInstancesLogPath = path.join(
 );
 const metaDataTemplate = readFileSync(metaDataPath, 'utf8');
 const userDataContent = readFileSync(userDataPath, 'utf8');
+const networkConfigTemplate = readFileSync(networkConfigPath, 'utf8');
 
 const STATIC_IP_PREFIX = '10.0.10.';
 const STATIC_IP_START = 100;
@@ -323,6 +325,16 @@ app.get('/cloud-init/v3/:vmgenId/:vmName/user-data', (_, response) => {
 });
 app.get('/cloud-init/v3/:vmgenId/:vmName/vendor-data', (_, response) => {
 	response.type('text/plain').send('');
+});
+app.get('/cloud-init/v3/:vmgenId/:vmName/network-config', (request, response) => {
+	const { vmgenId, vmName } = request.params;
+	const clientIdentifier = `${vmgenId}:${vmName}`;
+	const { ipAddress } = getOrCreateAssignment(clientIdentifier);
+	const networkConfigBody = networkConfigTemplate.replace(
+		/(addresses:\s*\[)(\d+\.\d+\.\d+\.\d+)(\/\d+])/,
+		`$1${ipAddress}$3`,
+	);
+	response.type('text/yaml').send(networkConfigBody);
 });
 app.get('/cloud-init/v3/:vmgenId/:vmName/meta-data', (request, response) => {
 	const { vmgenId, vmName } = request.params;

@@ -1,12 +1,4 @@
 instance-id: iid-local01
 local-hostname: server-00
-hostname: server-00
-network:
-  version: 2
-  ethernets:
-    ens18:
-      dhcp4: false
-      addresses: [10.0.10.100/24]
-      gateway4: 10.0.10.1
-      nameservers:
-        addresses: [10.0.10.1]
+hostname: server-00.home.arpa
+
